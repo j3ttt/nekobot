@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Runtime data (lives in ~/.nekoclaw/ at runtime, but keep templates in data/)
+data/memory/core.json
+data/memory/active.json
+data/memory/archive/**/*.md
+data/memory/journal.jsonl
+data/memory/diary.md
+data/sessions.json
+data/usage.jsonl
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+config.yaml
+config.yml
+*.env

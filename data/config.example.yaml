@@ -1,0 +1,36 @@
+# NekoBot configuration example
+# Copy to ~/.nekobot/config.yaml and fill in your values.
+
+gateway:
+  workspace: ~/.nekobot/workspace
+  data_dir: ~/.nekobot/data
+  prompts_dir: ~/.nekobot/prompts
+  memory_path: ~/.nekobot/memory
+  permission_mode: bypassPermissions
+  model: null                  # null = Claude Code auto-selects
+  forward_thinking: true       # forward ThinkingBlock to user
+  # state_ws_port: 9100       # WebSocket port for StateEmitter (0 = disabled, default)
+  # state_ws_host: "127.0.0.1" # listen address ("0.0.0.0" for LAN access)
+
+channels:
+  telegram:
+    enabled: false
+    token: "BOT_TOKEN_HERE"
+    allow_from: ["*"]          # ["*"] = allow all, [] = deny all
+    proxy: null
+
+  discord:
+    enabled: false
+    token: "BOT_TOKEN_HERE"
+    allow_from: []
+
+  dingtalk:
+    enabled: false
+    client_id: ""
+    client_secret: ""
+    allow_from: ["*"]          # ["*"] = allow all, [] = deny all
+
+ping:
+  enabled: true
+  min_hours: 2.0
+  max_hours: 8.0
