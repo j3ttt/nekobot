@@ -26,6 +26,9 @@ data/usage.jsonl
 .DS_Store
 Thumbs.db
 
+# Runtime — patched Claude Code binary (too large for git)
+runtime/bin/
+
 # Secrets
 config.yaml
 config.yml
