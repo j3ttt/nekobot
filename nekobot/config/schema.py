@@ -26,7 +26,6 @@ class GatewayConfig(Base):
     prompts_dir: str = "~/.nekobot/prompts"
     memory_path: str = "~/.nekobot/memory"
     permission_mode: str = "bypassPermissions"
-    cli_path: str | None = None  # Path to Claude Code binary (None = auto-detect)
     model: str | None = None  # None = Claude Code auto-selects
     forward_thinking: bool = True
     max_turns: int | None = None
