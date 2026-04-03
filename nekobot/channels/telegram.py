@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from typing import Any
 
 from loguru import logger
 from telegram import Update
@@ -81,6 +82,8 @@ class TelegramChannel(BaseChannel):
         self._app: Application | None = None
         self._typing_tasks: dict[str, asyncio.Task] = {}
 
+    _START_RETRY_DELAY = 10  # seconds between connection retries
+
     async def start(self) -> None:
         if not self.config.token:
             logger.error("Telegram bot token not configured")
@@ -88,31 +91,23 @@ class TelegramChannel(BaseChannel):
 
         self._running = True
 
-        req = HTTPXRequest(connection_pool_size=16, pool_timeout=5.0, connect_timeout=30.0, read_timeout=30.0)
-        builder = Application.builder().token(self.config.token).request(req).get_updates_request(req)
-        if self.config.proxy:
-            builder = builder.proxy(self.config.proxy).get_updates_proxy(self.config.proxy)
-        self._app = builder.build()
-        self._app.add_error_handler(self._on_error)
+        # Retry loop: network/proxy may be temporarily unavailable
+        while self._running:
+            self._app = self._build_app()
+            try:
+                await self._app.initialize()
+                await self._app.start()
+                bot_info = await self._app.bot.get_me()
+                logger.info("Telegram bot @{} connected", bot_info.username)
+                await self._app.updater.start_polling(allowed_updates=["message"], drop_pending_updates=True)
+                break
+            except Exception as e:
+                logger.warning("Telegram connect failed (retrying in {}s): {}", self._START_RETRY_DELAY, e)
+                await self._shutdown_app()
+                await asyncio.sleep(self._START_RETRY_DELAY)
 
-        self._app.add_handler(CommandHandler("start", self._on_start))
-        self._app.add_handler(CommandHandler("new", self._forward_command))
-        self._app.add_handler(CommandHandler("help", self._forward_command))
-        self._app.add_handler(
-            MessageHandler(
-                (filters.TEXT | filters.PHOTO | filters.VOICE | filters.AUDIO | filters.Document.ALL)
-                & ~filters.COMMAND,
-                self._on_message,
-            )
-        )
-
-        await self._app.initialize()
-        await self._app.start()
-
-        bot_info = await self._app.bot.get_me()
-        logger.info("Telegram bot @{} connected", bot_info.username)
-
-        await self._app.updater.start_polling(allowed_updates=["message"], drop_pending_updates=True)
+        if not self._running:
+            return
 
         while self._running:
             await asyncio.sleep(1)
@@ -121,11 +116,7 @@ class TelegramChannel(BaseChannel):
         self._running = False
         for cid in list(self._typing_tasks):
             self._stop_typing(cid)
-        if self._app:
-            await self._app.updater.stop()
-            await self._app.stop()
-            await self._app.shutdown()
-            self._app = None
+        await self._shutdown_app()
 
     async def send(self, msg: OutboundMessage) -> None:
         if not self._app:
@@ -271,3 +262,57 @@ class TelegramChannel(BaseChannel):
             if mime_type in ext_map:
                 return ext_map[mime_type]
         return {"image": ".jpg", "voice": ".ogg", "audio": ".mp3", "file": ""}.get(media_type or "", "")
+
+    def _build_request_kwargs(self) -> dict[str, Any]:
+        """Build HTTPXRequest kwargs.
+
+        Telegram channel should only use the proxy explicitly configured for it.
+        Disable ambient HTTP(S)_PROXY inheritance to avoid accidental local
+        proxy coupling.
+        """
+        req_kwargs: dict[str, Any] = {
+            "connection_pool_size": 16,
+            "pool_timeout": 5.0,
+            "connect_timeout": 30.0,
+            "read_timeout": 30.0,
+            "httpx_kwargs": {"trust_env": False},
+        }
+        if self.config.proxy:
+            req_kwargs["proxy"] = self.config.proxy
+        return req_kwargs
+
+    def _build_app(self) -> Application:
+        req_kwargs = self._build_request_kwargs()
+        req = HTTPXRequest(**req_kwargs)
+        updates_req = HTTPXRequest(**req_kwargs)
+        app = Application.builder().token(self.config.token).request(req).get_updates_request(updates_req).build()
+        app.add_error_handler(self._on_error)
+        app.add_handler(CommandHandler("start", self._on_start))
+        app.add_handler(CommandHandler("new", self._forward_command))
+        app.add_handler(CommandHandler("help", self._forward_command))
+        app.add_handler(
+            MessageHandler(
+                (filters.TEXT | filters.PHOTO | filters.VOICE | filters.AUDIO | filters.Document.ALL)
+                & ~filters.COMMAND,
+                self._on_message,
+            )
+        )
+        return app
+
+    async def _shutdown_app(self) -> None:
+        app = self._app
+        self._app = None
+        if not app:
+            return
+        try:
+            await app.updater.stop()
+        except Exception:
+            pass
+        try:
+            await app.stop()
+        except Exception:
+            pass
+        try:
+            await app.shutdown()
+        except Exception:
+            pass

@@ -449,3 +449,24 @@ class TestMessageBatching:
             assert len(query_content) == 1
             # Should NOT have double timestamp like [2026-01-01 12:00] [12:00] ...
             assert not query_content[0].startswith("[2026")
+
+    @pytest.mark.asyncio
+    async def test_system_message_skips_timestamp_injection(self, tmp_path):
+        """_handle skips timestamp injection for internal system commands."""
+        gw = _make_gateway(tmp_path)
+        system_msg = _make_msg(content="/compact test instructions", channel="system", sender_id="system")
+
+        with _patch_sdk():
+            query_content: list[str] = []
+
+            async def fake_query(msg, content, client):
+                query_content.append(content)
+                return None
+
+            gw._query_claude = AsyncMock(side_effect=fake_query)
+            gw._get_or_create_client = AsyncMock(return_value=MagicMock())
+
+            await gw._handle(system_msg)
+
+            assert len(query_content) == 1
+            assert query_content[0] == "/compact test instructions"

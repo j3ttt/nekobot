@@ -15,6 +15,94 @@
 
 ---
 
+## 2026-04-01 — FIX: Telegram 显式禁用环境代理继承 + 启动重试清理
+
+- Recorder: codex
+- Module: channels/telegram, tests
+- Context: `Telegram connect failed: httpx.ConnectError`。定位到当前运行环境存在 `http_proxy` / `https_proxy`，而 Telegram channel 在 `config.proxy` 为空时仍会被 `httpx` 默认行为带去走环境代理。
+
+### Changes
+
+- `nekobot/channels/telegram.py`: 新增 `_build_request_kwargs()`，统一设置 `httpx_kwargs={"trust_env": False}`，只在 `channels.telegram.proxy` 明确配置时才使用代理
+- `nekobot/channels/telegram.py`: 启动重试改为每次重建 `Application`，并在失败后调用 `_shutdown_app()` 清理半初始化状态
+- `nekobot/channels/telegram.py`: bot request 与 getUpdates request 改为各自独立的 `HTTPXRequest` 实例
+- `tests/test_telegram.py`: 新增 2 个测试，覆盖默认禁用环境代理继承与显式 proxy 配置
+
+### Interface Changes
+
+- 行为变化：Telegram channel 不再自动继承进程环境中的 `HTTP_PROXY` / `HTTPS_PROXY`
+- 如需代理，必须通过 `channels.telegram.proxy` 显式配置
+
+### Validation
+
+- `python -m pytest tests/test_telegram.py tests/test_gateway.py -q`
+- 22 tests passing
+
+---
+
+## 2026-04-01 — FIX: system /compact 跳过 timestamp 注入
+
+- Recorder: codex
+- Module: gateway/router, tests
+- Context: 按最小改动方案修复 auto memorizing 被 timestamp 前缀破坏的问题。
+
+### Changes
+
+- `nekobot/gateway/router.py`: `_handle()` 中 timestamp 注入条件追加 `msg.sender_id != "system"`，内部 system 消息不再被加 `[YYYY-MM-DD HH:MM]` 前缀
+- `tests/test_gateway.py`: 新增 `test_system_message_skips_timestamp_injection`，覆盖 system `/compact ...` 命令回归
+
+### Interface Changes
+
+- 无公共接口变更
+- 行为变化：`sender_id == "system"` 的入站消息保留原始内容，不再自动注入 timestamp
+
+### Follow-up Recommendation
+
+- 当前修复刻意保持最小范围，只覆盖内部 system 消息
+- 更完整的后续方案：timestamp 注入应额外跳过以 `/` 开头的 slash command，避免用户显式命令在其他 channel 中也被前缀破坏
+
+---
+
+## 2026-04-01 — BUG: /compact 命令被 timestamp 前缀破坏
+
+- Recorder: jettt (human)
+- Module: gateway/router
+- Context: auto memorizing 触发 /compact 失败，命令未被 CLI 识别。
+
+### Root Cause
+
+`router.py` `_handle()` lines 484-487 无条件给所有非 batched 消息注入 timestamp 前缀：
+
+```python
+if not msg.metadata.get("_batched"):
+    ts = msg.timestamp.strftime("%Y-%m-%d %H:%M")
+    content = f"[{ts}] {content}"
+```
+
+当 `tools.py` 或 `hooks.py` 发送 `/compact {instructions}` 时，消息经过 `_handle()` 变成：
+
+```
+[2026-04-01 01:30] /compact {instructions}
+```
+
+CLI 期望 content 以 `/compact` 开头，timestamp 前缀导致命令无法被识别。
+
+### Fix
+
+`_handle()` 中 timestamp 注入应跳过 `sender_id == "system"` 的消息（或 content 以 `/` 开头的消息）。
+
+相关文件：
+- `nekobot/gateway/router.py` L484-487 — timestamp 注入点
+- `nekobot/gateway/tools.py` L98 — memorize tool 发送 /compact
+- `nekobot/gateway/hooks.py` L85 — PreCompact hook 发送 /compact
+
+### Impact
+
+- auto memorizing 完全失效（/compact 被当作普通聊天处理）
+- 手动 /memorizing（通过 skill → tools.py）同样受影响
+
+---
+
 ## 2026-03-22 — Async Dialogue: Message Batching
 
 - Recorder: claude-opus

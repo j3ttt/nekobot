@@ -481,8 +481,8 @@ class Gateway:
         if self.media:
             content = await self.media.process_content(content)
 
-        # Inject message timestamp (skip for batched messages — already embedded)
-        if not msg.metadata.get("_batched"):
+        # Inject message timestamp (skip for batched/internal system messages)
+        if not msg.metadata.get("_batched") and msg.sender_id != "system":
             ts = msg.timestamp.strftime("%Y-%m-%d %H:%M")
             content = f"[{ts}] {content}"
 
