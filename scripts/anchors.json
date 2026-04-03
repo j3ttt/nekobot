@@ -1,0 +1,14 @@
+{
+  "version": "2.1.87",
+  "description": "Patch definitions for Claude Code binary reverse patching",
+  "patches": [
+    {
+      "name": "compact-prompt-trim-examples-and-inject-memory",
+      "description": "Replace the verbose example block at the end of compact prompt with memory archiving instructions. Net size change should be negative or zero.",
+      "anchor": "There may be additional summarization instructions provided in the included context. If so, remember to follow these instructions when creating the above summary. Examples of instructions include:\n<example>\n## Compact Instructions\nWhen summarizing the conversation focus on typescript code changes and also remember the mistakes you made and how you fixed them.\n</example>\n\n<example>\n# Summary instructions\nWhen you are using compact - please focus on test output and code changes. Include file reads verbatim.\n</example>",
+      "replacement": "If additional summarization instructions are provided, follow them.\n\nIMPORTANT Memory Archiving: Also extract persistent facts from this conversation (user preferences, decisions, life events) into a <memory_archive> block after </summary>. Format: category.key: value (categories: core, active, archive).",
+      "required": true,
+      "replace_all": true
+    }
+  ]
+}
