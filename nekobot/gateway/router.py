@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -630,6 +631,9 @@ class Gateway:
                 "PreCompact": [HookMatcher(hooks=[self._pre_compact_hook])],
             },
         }
+
+        if self.config.cli_path:
+            opts["cli_path"] = str(Path(self.config.cli_path).expanduser())
 
         if session_id:
             opts["resume"] = session_id
